@@ -1,6 +1,6 @@
 /* Service worker de Snake UPS: funciona sin conexión.
    Si cambias algún archivo del juego, sube el número de versión. */
-const CACHE = 'snake-ups-v1';
+const CACHE = 'snake-ups-v2';
 const ASSETS = [
   './',
   './index.html',

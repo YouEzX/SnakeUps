@@ -226,6 +226,16 @@ body[data-mode="2"] .stat{min-width:120px}
 .vp{border:1.5px solid var(--c);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;align-items:center;background:var(--card)}
 .vp b{color:var(--c);letter-spacing:1px}
 .vp .kk{display:flex;gap:4px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.mode{display:flex;flex-direction:column;gap:6px;text-align:left;padding:16px;border-radius:14px;background:var(--card);border:1.5px solid rgba(255,255,255,.12);transition:.15s;position:relative}
+.mode:hover,.mode:focus-visible{border-color:var(--teal);background:rgba(47,163,146,.14);transform:translateY(-2px);outline:none}
+.mode.cur{border-color:rgba(79,209,165,.6)}
+.mode svg{width:30px;height:30px;color:var(--teal)}
+.mode b{font-size:16px;letter-spacing:1px}
+.mode small{color:var(--mute);font-size:12px;line-height:1.4}
+.mode .tag{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--amber);font-weight:700}
+.mode kbd{position:absolute;top:12px;right:12px}
+body[data-device=mobile] #oMode,body[data-device=mobile] #pMode{display:none}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important}}
 </style>
 </head>
@@ -266,11 +276,11 @@ body[data-mode="2"] .stat{min-width:120px}
   <div id="hud"></div><div id="hud2"></div>
   <div class="ov hide" id="pause">
    <h2>Pausa</h2>
-   <div class="obtns"><button class="btn" id="pResume">Continuar</button><button class="btn ghost" id="pSet">Ajustes</button><button class="btn ghost" id="pMenu">Menú principal</button></div>
+   <div class="obtns"><button class="btn" id="pResume">Continuar</button><button class="btn ghost" id="pSet">Ajustes</button><button class="btn ghost" id="pMode">Cambiar modo</button><button class="btn ghost" id="pMenu">Menú principal</button></div>
   </div>
   <div class="ov hide" id="over">
    <h2 id="overT">Game over</h2><p id="overP"></p>
-   <div class="obtns"><button class="btn" id="again">Otra vez</button><button class="btn ghost" id="oMenu">Menú principal</button></div>
+   <div class="obtns"><button class="btn" id="again">Otra vez</button><button class="btn ghost" id="oMode">Cambiar modo</button><button class="btn ghost" id="oMenu">Menú principal</button></div>
   </div>
  </div>
  <div class="gright">
@@ -319,14 +329,14 @@ for(const k in POW)POW[k].path=new Path2D(POW[k].ic);
 /* ---------- ajustes y datos guardados ---------- */
 const load=(k,d)=>{try{return{...d,...JSON.parse(localStorage.getItem(k)||'{}')}}catch(e){return{...d}}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-const DEF={mpMap:'big',mpRounds:'3',mpSk0:'neon',mpSk1:'neon',skin:'neon',sound:true,vol:60,vib:true,diff:'normal',walls:'solid',powers:true,grid:true,fx:'auto',touch:'swipe',ui:'auto'};
+const DEF={lastMode:'solo',mpMode:'classic',mpMap:'big',mpRounds:'3',mpSk0:'neon',mpSk1:'neon',skin:'neon',sound:true,vol:60,vib:true,diff:'normal',walls:'solid',powers:true,grid:true,fx:'auto',touch:'swipe',ui:'auto'};
 let cfg=load('snakeCfg',DEF);if(cfg.skinV!==4){cfg.skin='neon';cfg.fx='auto';cfg.skinV=4;try{localStorage.setItem('snakeCfg',JSON.stringify(cfg))}catch(e){}}
 let stats=load('snakeStats',{games:0,apples:0,bestLevel:1,total:0});
 const DIFF={easy:{base:165,min:80},normal:{base:140,min:62},hard:{base:112,min:48}};
 let best=0;try{best=+localStorage.getItem('snakeBest')||0}catch(e){}
 let DEV='desktop',screen='menu',panelOpen=null,lastFocus=null;
 let PERF=0,adapt=0,ema=17,emaT=0,RES=1;const fxLow=()=>PERF>=1;
-let players=[],apples=[],item=null,level=1,totalEaten=0,mode=1,COLS=20,ROWS=20,W=600,H=600,round=1,matchDone=false,cd=0,cdN=0,last=0,t=0,shake=0,state='menu',hudT=0,parts=[],texts=[],flash=0;
+let players=[],apples=[],item=null,level=1,totalEaten=0,mode=1,vmode='classic',hill=null,hillOwner=-1,roundT=0,swapUntil=0,lastSec=-1,COLS=20,ROWS=20,W=600,H=600,round=1,matchDone=false,cd=0,cdN=0,last=0,t=0,shake=0,state='menu',hudT=0,parts=[],texts=[],flash=0;
 
 /* ---------- sonido / vibración ---------- */
 let ac;function beep(f,d=.12,type='sine',v=.05,slide=0){if(!cfg.sound||cfg.vol<=0)return;try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=f;if(slide)o.frequency.exponentialRampToValueAtTime(f*slide,ac.currentTime+d);g.gain.value=v*(cfg.vol/50);g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+d);o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d)}catch(e){}}
@@ -337,7 +347,7 @@ function toggleSound(){cfg.sound=!cfg.sound;save('snakeCfg',cfg);syncSound();if(
 /* ---------- utilidades ---------- */
 const rnd=n=>Math.floor(Math.random()*n);
 const free=(x,y)=>!players.some(p=>p.snake.some(s=>s.x===x&&s.y===y))&&!apples.some(a=>a.x===x&&a.y===y)&&!(item&&item.x===x&&item.y===y);
-const targetApples=()=>mode===2?Math.max(3,Math.round(COLS*ROWS/160)):1;
+const targetApples=()=>mode===2?(vmode==='classic'?Math.max(3,Math.round(COLS*ROWS/160)):2):1;
 function randCell(){let x,y,k=0;do{x=rnd(COLS);y=rnd(ROWS)}while(!free(x,y)&&++k<400);return{x,y}}
 function spawnApple(){const c=randCell();apples.push({...c,gold:Math.random()<.15,born:t})}
 function spawnItem(){const keys=Object.keys(POW),c=randCell();item={...c,type:keys[rnd(keys.length)],ttl:9000,max:9000}}
@@ -346,10 +356,10 @@ const kick=v=>{shake=Math.max(shake,v*(fxLow()?.35:1))};
 function say(x,y,txt,color='#fff'){texts.push({x,y,txt,color,life:1})}
 const cx=c=>(c+.5)*S;
 const baseMs=()=>{const D=DIFF[cfg.diff]||DIFF.normal;return Math.max(D.min,D.base-level*7)};
-const tickMs=pl=>baseMs()*(pl.powers.turbo?.6:1)*(pl.powers.slow?1.7:1);
+const tickMs=pl=>baseMs()*(pl.powers.turbo?.6:1)*(pl.powers.slow?1.7:1)*(vmode==='hunt'&&pl.role==='hunter'?.9:1);
 
 /* ---------- estado del juego ---------- */
-const PCOL=['#4fd1a5','#ff7a59'],PHUE=[0,150];
+const PCOL=['#4fd1a5','#ff7a59'],PHUE=[0,150],HILL_MOVE=15000,HILL_TIME=120000,HILL_TARGET=250,HUNT_TIME=90000,CROWN=new Path2D('M3 8l4 4 5-7 5 7 4-4-2 11H5z');
 let HINTS_SOLO='',hudKeys=['',''];
 function makePlayer(i,x,y,dx,dy,wins=0){
  const snake=[];for(let k=0;k<3;k++)snake.push({x:x-dx*k,y:y-dy*k});
@@ -362,12 +372,15 @@ function setHints(){
 }
 function newGame(m,keepWins){
  const w=keepWins&&players.length===2?[players[0].wins,players[1].wins]:[0,0];
- mode=m;document.body.dataset.mode=m;
+ mode=m;vmode=m===2?(cfg.mpMode||'classic'):'classic';document.body.dataset.mode=m;
  if(m===2){const huge=cfg.mpMap==='huge';COLS=huge?44:32;ROWS=huge?28:20}else{COLS=20;ROWS=20}
  setSize();
  players=m===2?[makePlayer(0,5,Math.floor(ROWS/3),1,0,w[0]),makePlayer(1,COLS-6,Math.floor(2*ROWS/3),-1,0,w[1])]:[makePlayer(0,10,10,1,0)];
  if(!keepWins)round=1;
- level=1;totalEaten=0;apples=[];item=null;parts=[];texts=[];matchDone=false;
+ level=1;totalEaten=0;apples=[];item=null;parts=[];texts=[];matchDone=false;swapUntil=0;lastSec=-1;hillOwner=-1;
+ roundT=vmode==='hill'?HILL_TIME:vmode==='hunt'?HUNT_TIME:0;
+ hill=vmode==='hill'?newHill(null):null;
+ if(vmode==='hunt'){const f=Math.random()<.5?0:1;players[f].role='hunter';players[1-f].role='prey'}
  hudKeys=['',''];$('hud').innerHTML='';$('hud2').innerHTML='';
  while(apples.length<targetApples())spawnApple();
  setHints();ui();
@@ -376,7 +389,7 @@ function reset(){newGame(1)}
 function show(id){['pause','over'].forEach(k=>$(k).classList.toggle('hide',k!==id))}
 function start(){newGame(1);state='play';show('');if(document.activeElement)document.activeElement.blur();beep(520,.15,'square',.04,2)}
 function beginRound(){state='count';cd=3000;cdN=0;show('');if(document.activeElement)document.activeElement.blur()}
-function goVersus(){setScreen('game');newGame(2);beginRound()}
+function goVersus(){cfg.lastMode=cfg.mpMode||'classic';save('snakeCfg',cfg);setScreen('game');newGame(2);beginRound()}
 function startRound(){newGame(2,true);beginRound()}
 function onAgain(){if(mode===2){if(matchDone)goVersus();else{round++;startRound()}}else start()}
 function kill(pl){
@@ -393,14 +406,17 @@ function endSolo(){
  $('again').textContent='Otra vez';
  setTimeout(()=>{if(state==='over'){show('over');if(DEV==='desktop')$('again').focus()}},900);ui();
 }
-function endRound(w){
+function endRound(w,byScore){
  state='over';const[a,b]=players;let win=w;
- if(!w)win=a.score>b.score?a:b.score>a.score?b:null;
+ if(!w||byScore)win=a.score>b.score?a:b.score>a.score?b:null;
  if(win)win.wins++;
  const need=Math.ceil((+cfg.mpRounds||3)/2);matchDone=!!win&&win.wins>=need;
+ let why='';
+ if(byScore)why=vmode==='hill'&&Math.max(a.score,b.score)>=HILL_TARGET?`llegó a ${HILL_TARGET} puntos`:'se acabó el tiempo';
+ else if(!w)why='chocaron los dos';
  $('overT').style.color=win?PCOL[win.id]:'';
  $('overT').textContent=win?(matchDone?`¡${win.name} gana la partida!`:`${win.name} gana la ronda`):'Empate';
- $('overP').textContent=`Puntos ${a.score} - ${b.score} · Victorias ${a.wins} - ${b.wins}${w?'':' · chocaron los dos'}`;
+ $('overP').textContent=`Puntos ${a.score} - ${b.score} · Victorias ${a.wins} - ${b.wins}${why?' · '+why:''}`;
  $('again').textContent=matchDone?'Revancha':'Siguiente ronda';
  beep(win?660:300,.3,'triangle',.06,win?1.8:.7);
  setTimeout(()=>{if(state==='over'){show('over');if(DEV==='desktop')$('again').focus()}},900);ui();
@@ -409,10 +425,15 @@ function togglePause(){
  if(state==='play'){state='pause';show('pause');if(DEV==='desktop')$('pResume').focus()}
  else if(state==='pause'){state='play';show('');if(document.activeElement)document.activeElement.blur()}
 }
+const fmtT=ms=>{const s=Math.ceil(Math.max(0,ms)/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 function ui(){
  const a=players[0],b=players[1];
- if(mode===2){$('l1').textContent=`J1 · ${a.wins} vict.`;$('score').textContent=a.score;$('l2').textContent=`Ronda ${round}`;$('best').textContent='Nivel '+level;$('l3').textContent=`J2 · ${b.wins} vict.`;$('level').textContent=b.score}
- else{$('l1').textContent='Puntos';$('score').textContent=a?a.score:0;$('l2').textContent='Récord';$('best').textContent=best;$('l3').textContent='Nivel';$('level').textContent=level}
+ if(mode===2){
+  $('l1').textContent=`J1 · ${a.wins} vict.`;$('score').textContent=a.score;
+  if(vmode==='classic'){$('l2').textContent=`Ronda ${round}`;$('best').textContent='Nivel '+level}
+  else{$('l2').textContent=`Ronda ${round} · ${vmode==='hill'?'Colina':'Caza'}`;$('best').textContent=fmtT(roundT)}
+  $('l3').textContent=`J2 · ${b.wins} vict.`;$('level').textContent=b.score;
+ }else{$('l1').textContent='Puntos';$('score').textContent=a?a.score:0;$('l2').textContent='Récord';$('best').textContent=best;$('l3').textContent='Nivel';$('level').textContent=level}
 }
 function popStat(id){const e=$(id);e.classList.remove('pop');void e.offsetWidth;e.classList.add('pop')}
 function eatApple(pl,a){
@@ -455,21 +476,117 @@ function stepGroup(ms){
   if(r.dead||r.pl.powers.ghost)continue;
   const{pl,h}=r;
   let hit=r.next.slice(1).some(s=>s.x===h.x&&s.y===h.y);
-  if(!hit)for(const o of players){if(o===pl||!o.alive)continue;if(nextOf(o).some(s=>s.x===h.x&&s.y===h.y)){hit=true;break}}
+  if(!hit&&vmode!=='hunt')for(const o of players){if(o===pl||!o.alive)continue;if(nextOf(o).some(s=>s.x===h.x&&s.y===h.y)){hit=true;break}}
   if(hit){if(pl.powers.shield)useShield(pl,'Salvado');else r.dead=true}
+ }
+ let cap=null;
+ if(vmode==='hunt'&&t>=swapUntil){
+  const hu=players.find(p=>p.role==='hunter'),pe=players.find(p=>p.role==='prey');
+  if(hu&&pe&&hu.alive&&pe.alive&&!rec.some(q=>q.dead&&(q.pl===hu||q.pl===pe))){
+   const hh=nextOf(hu)[0];
+   if(nextOf(pe).some(s=>s.x===hh.x&&s.y===hh.y))cap=[hu,pe];
+  }
  }
  for(const r of rec){
   const{pl,h}=r;
-  if(r.dead){kill(pl);continue}
+  if(r.dead){
+   kill(pl);
+   if(vmode!=='classic'){pl.respawnAt=t+2500;if(vmode==='hunt')pl.score=Math.max(0,pl.score-25);ui()}
+   continue;
+  }
   pl.snake=r.next;
   if(r.ap)eatApple(pl,r.ap);
   if(!fxLow()&&Math.random()<.5){const tl=pl.snake[pl.snake.length-1];burst(cx(tl.x),cx(tl.y),`hsl(${(150+rnd(40)+pl.hs)%360},45%,62%)`,1,1.2)}
   if(item&&h.x===item.x&&h.y===item.y)takeItem(pl);
  }
+ if(cap)capture(cap[0],cap[1]);
  if(cfg.powers&&!item&&Math.random()<(mode===2?.06:.03))spawnItem();
  const alive=players.filter(p=>p.alive);
  if(mode===1){if(!alive.length)endSolo()}
- else if(alive.length<=1&&state==='play')endRound(alive[0]||null);
+ else if(vmode==='classic'&&alive.length<=1&&state==='play')endRound(alive[0]||null);
+}
+/* ---------- modos: colina y cazador ---------- */
+function capture(hu,pe){
+ hu.role='prey';pe.role='hunter';hu.score+=50;swapUntil=t+2200;
+ const q=pe.snake[0];
+ burst(cx(q.x),cx(q.y),'#ff4d4d',40,7);say(cx(q.x),cx(q.y)-18,'¡CAPTURA! +50','#ff7a7a');
+ kick(12);flash=.35;beep(200,.25,'sawtooth',.07,2.2);haptic([30,20,60]);ui();
+}
+function respawn(pl){
+ const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+ for(let tries=0;tries<300;tries++){
+  const d=dirs[rnd(4)],x=3+rnd(COLS-6),y=3+rnd(ROWS-6);let ok=true;
+  for(let k=-5;k<3&&ok;k++){const px=x-d[0]*k,py=y-d[1]*k;if(px<0||px>=COLS||py<0||py>=ROWS||!free(px,py))ok=false}
+  if(!ok)continue;
+  const snake=[0,1,2].map(k=>({x:x-d[0]*k,y:y-d[1]*k}));
+  Object.assign(pl,{snake,prev:snake.map(s=>({...s})),dir:{x:d[0],y:d[1]},queue:[],powers:{ghost:2200},acc:0,alive:true,headAng:Math.atan2(d[1],d[0]),turnPulse:0,bulges:[],combo:0,comboT:0,respawnAt:0});
+  burst(cx(x),cx(y),PCOL[pl.id],24,5);say(cx(x),cx(y)-14,'¡Reaparece!',PCOL[pl.id]);beep(560,.15,'triangle',.05,1.6);return;
+ }
+ pl.respawnAt=t+500;
+}
+function newHill(prev){
+ const sz=cfg.mpMap==='huge'?7:6;let x=Math.floor((COLS-sz)/2),y=Math.floor((ROWS-sz)/2);
+ if(prev)for(let k=0;k<80;k++){const nx=1+rnd(COLS-sz-1),ny=1+rnd(ROWS-sz-1);if(Math.hypot(nx-prev.x,ny-prev.y)>=9){x=nx;y=ny;break}}
+ return{x,y,w:sz,h:sz,born:t,moveAt:t+HILL_MOVE,warned:false};
+}
+function moveHill(){hill=newHill(hill);beep(660,.2,'triangle',.05,1.5);kick(6)}
+const inHill=c=>c.x>=hill.x&&c.x<hill.x+hill.w&&c.y>=hill.y&&c.y<hill.y+hill.h;
+function modeTick(dt){
+ if(vmode==='hill'){
+  if(t>=hill.moveAt)moveHill();
+  else if(hill.moveAt-t<2500&&!hill.warned){hill.warned=true;beep(440,.15,'square',.04);say(W/2,70,'¡La colina se mueve!','#e0a526')}
+  const ins=players.filter(p=>p.alive&&p.snake.length&&inHill(p.snake[0]));
+  hillOwner=ins.length===1?ins[0].id:ins.length>1?2:-1;
+  if(ins.length===1){const p=ins[0];p.hacc=(p.hacc||0)+dt;let g=0;while(p.hacc>=100){p.hacc-=100;p.score++;g++}if(g)ui()}
+ }else if(vmode==='hunt'){
+  const pe=players.find(p=>p.role==='prey');
+  if(pe&&pe.alive){pe.hacc=(pe.hacc||0)+dt;let g=0;while(pe.hacc>=200){pe.hacc-=200;pe.score++;g++}if(g)ui()}
+ }
+ roundT-=dt;
+ const sec=Math.ceil(Math.max(0,roundT)/1000);if(sec!==lastSec){lastSec=sec;ui()}
+ if(vmode==='hill'&&Math.max(players[0].score,players[1].score)>=HILL_TARGET)endRound(null,true);
+ else if(roundT<=0)endRound(null,true);
+}
+function drawHill(){
+ if(!hill)return;
+ const x=hill.x*S,y=hill.y*S,w=hill.w*S,h=hill.h*S,age=Math.min(1,(t-hill.born)/450),k=1-Math.pow(1-age,3),mx=x+w/2,my=y+h/2;
+ const warn=state==='play'&&hill.moveAt-t<2500;
+ const c=hillOwner===0?'79,209,165':hillOwner===1?'255,122,89':hillOwner===2?'255,255,255':'224,165,38';
+ ctx.save();ctx.translate(mx,my);ctx.scale(k,k);ctx.translate(-mx,-my);
+ ctx.fillStyle=`rgba(${c},${.1+.07*(.5+.5*Math.sin(t/260))})`;ctx.fillRect(x,y,w,h);
+ ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+ ctx.strokeStyle=`rgba(${c},.13)`;ctx.lineWidth=2;ctx.beginPath();const off=(t/40)%18;
+ for(let i=-h;i<w;i+=18){ctx.moveTo(x+i+off,y+h);ctx.lineTo(x+i+h+off,y)}ctx.stroke();ctx.restore();
+ ctx.setLineDash([12,8]);ctx.lineDashOffset=-t/40;ctx.lineWidth=3;
+ ctx.strokeStyle=warn&&Math.floor(t/150)%2?'rgba(255,80,80,.95)':`rgba(${c},.9)`;ctx.strokeRect(x+1.5,y+1.5,w-3,h-3);ctx.setLineDash([]);
+ ctx.translate(mx,my);const ks=S*1.5/24;ctx.scale(ks,ks);ctx.translate(-12,-12);
+ ctx.globalAlpha=.5;ctx.strokeStyle=`rgba(${c},1)`;ctx.lineWidth=1.6;ctx.lineJoin='round';ctx.stroke(CROWN);
+ ctx.restore();
+}
+function drawRole(pl,p){
+ if(!pl.alive||!pl.snake.length)return;
+ const q=pos(pl,0,p),x=cx(q.x),y=cx(q.y),hu=pl.role==='hunter',col=hu?'#ff4d4d':'#7fd1ff',grace=t<swapUntil&&Math.floor(t/140)%2;
+ ctx.save();
+ ctx.strokeStyle=col;ctx.lineWidth=3;ctx.globalAlpha=.85;ctx.setLineDash(hu?[]:[6,6]);ctx.lineDashOffset=-t/30;
+ ctx.beginPath();ctx.arc(x,y,S*(.82+.07*Math.sin(t/130)),0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+ const label=hu?'CAZADOR':'PRESA';ctx.font='bold 11px "Segoe UI",sans-serif';const tw=ctx.measureText(label).width+14,ly=y-S*1.25;
+ if(!grace){rrect(x-tw/2,ly-9,tw,18,9);ctx.fillStyle='rgba(8,13,18,.82)';ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,ly+1)}
+ ctx.restore();
+}
+function drawTimer(){
+ if(mode!==2||vmode==='classic')return;
+ const txt=fmtT(roundT),low=roundT<10000&&state==='play',w=96,h=30,x=W/2-w/2,y=8;
+ ctx.save();rrect(x,y,w,h,15);ctx.fillStyle='rgba(8,13,18,.8)';ctx.fill();
+ ctx.strokeStyle=low&&Math.floor(t/250)%2?'#ff4d4d':'rgba(110,190,200,.5)';ctx.lineWidth=2;ctx.stroke();
+ ctx.fillStyle=low?'#ff7a7a':'#e6edf3';ctx.font='bold 18px "Segoe UI",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,W/2,y+h/2+1);
+ if(vmode==='hill')for(let i=0;i<2;i++){
+  const bw=120,bx=i?W/2+w/2+10:W/2-w/2-10-bw;
+  rrect(bx,y+10,bw,10,5);ctx.fillStyle='rgba(255,255,255,.14)';ctx.fill();
+  const fw=Math.max(0,Math.min(1,players[i].score/HILL_TARGET))*bw;
+  if(fw>1){rrect(bx,y+10,fw,10,5);ctx.fillStyle=PCOL[i];ctx.fill()}
+ }
+ ctx.restore();
 }
 function updatePowers(pl,dt){
  for(const k in pl.powers){pl.powers[k]-=dt;if(pl.powers[k]<=0){delete pl.powers[k];beep(260,.2,'sine',.04,.5)}}
@@ -835,22 +952,25 @@ function loop(ts){
   if(state==='count'){
    cd-=dt;const n=Math.ceil(cd/1000);
    if(cd>0&&n!==cdN){cdN=n;beep(520,.1,'square',.04)}
-   if(cd<=0){state='play';beep(880,.2,'square',.05,1.5);say(W/2,H/2,'¡YA!','#e6edf3');players.forEach(q=>q.acc=0)}
+   if(cd<=0){state='play';beep(880,.2,'square',.05,1.5);say(W/2,H/2,'¡YA!','#e6edf3');players.forEach(q=>q.acc=0);if(hill)hill.moveAt=t+HILL_MOVE}
   }
   if(state==='play'){
    for(const pl of players)if(pl.alive)updatePowers(pl,dt);
    updateWorld(dt);
+   if(mode===2&&vmode!=='classic')for(const pl of players)if(!pl.alive&&pl.respawnAt&&t>=pl.respawnAt)respawn(pl);
    for(const pl of players)if(pl.alive)pl.acc+=dt;
    let g=0;while(state==='play'&&g++<4){const d=players.filter(q=>q.alive&&q.acc>=tickMs(q));if(!d.length)break;d.forEach(q=>q.acc-=tickMs(q));stepGroup(d)}
+   if(mode===2&&vmode!=='classic'&&state==='play')modeTick(dt);
   }
+  for(const pl of players)if(!pl.alive&&pl.snake.length&&t-pl.diedAt>900)pl.snake=[];
   updateFx(dt);
   ctx.setTransform(RES,0,0,RES,0,0);ctx.clearRect(0,0,W,H);ctx.save();
   if(shake)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
-  drawBoard();
+  drawBoard();drawHill();
   for(const a of apples)drawApple(a);
   drawItem();
-  for(const pl of players){if(pl.alive||t-pl.diedAt<900){const p=state==='play'&&pl.alive?Math.min(1,pl.acc/tickMs(pl)):1;drawSnake(pl,p)}}
-  drawFx();drawCount();ctx.restore();
+  for(const pl of players){if(pl.snake.length&&(pl.alive||t-pl.diedAt<900)){const p=state==='play'&&pl.alive?Math.min(1,pl.acc/tickMs(pl)):1;drawSnake(pl,p);if(vmode==='hunt')drawRole(pl,p)}}
+  drawFx();drawTimer();drawCount();ctx.restore();
   if((hudT-=dt)<=0){hudT=90;drawHud()}
  }
  if(panelOpen==='skin')drawPreview();
@@ -860,7 +980,13 @@ function drawCount(){
  if(state!=='count')return;
  const n=Math.ceil(cd/1000),f=1-(cd%1000||1000)/1000;
  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`bold ${Math.round(150-50*f)}px "Segoe UI",sans-serif`;ctx.globalAlpha=1-f*.45;
- ctx.fillStyle='#e6edf3';ctx.strokeStyle='rgba(0,0,0,.65)';ctx.lineWidth=8;ctx.strokeText(n,W/2,H/2);ctx.fillText(n,W/2,H/2);ctx.restore();
+ ctx.fillStyle='#e6edf3';ctx.strokeStyle='rgba(0,0,0,.65)';ctx.lineWidth=8;ctx.strokeText(n,W/2,H/2);ctx.fillText(n,W/2,H/2);
+ ctx.globalAlpha=1;ctx.font='bold 22px "Segoe UI",sans-serif';ctx.lineWidth=5;
+ const role=p=>p.role==='hunter'?'CAZADOR':'PRESA';
+ const sub=vmode==='hill'?'REY DE LA COLINA':vmode==='hunt'?`J1: ${role(players[0])}   ·   J2: ${role(players[1])}`:'';
+ const sub2=vmode==='hill'?`Quédate en la zona: 10 puntos por segundo. Primero en ${HILL_TARGET}.`:vmode==='hunt'?'El cazador toca a la presa para cambiar de rol.':'';
+ if(sub){ctx.fillStyle='#e0a526';ctx.strokeText(sub,W/2,H/2+110);ctx.fillText(sub,W/2,H/2+110);ctx.font='600 15px "Segoe UI",sans-serif';ctx.fillStyle='#e6edf3';ctx.lineWidth=4;ctx.strokeText(sub2,W/2,H/2+140);ctx.fillText(sub2,W/2,H/2+140)}
+ ctx.restore();
 }
 function updatePerf(){
  const base=cfg.fx==='low'?1:cfg.fx==='high'?0:(DEV==='mobile'?1:0),np=Math.max(base,cfg.fx==='high'?0:adapt);
@@ -884,8 +1010,7 @@ function applyDevice(){
 /* ---------- menú principal ---------- */
 function toggleFS(){const d=document;if(!d.fullscreenEnabled)return;if(d.fullscreenElement)d.exitFullscreen();else d.documentElement.requestFullscreen().catch(()=>{})}
 const MENU=[
- {id:'bPlay',ic:PLAY,l:'Jugar',k:'Enter',cls:'primary',f:()=>goPlay()},
- {ic:USERS,l:'2 jugadores',k:'2',f:()=>openPanel('versus'),need:()=>DEV==='desktop'},
+ {id:'bPlay',ic:PLAY,l:'Jugar',k:'Enter',cls:'primary',f:()=>playMenu()},
  {ic:HELP,l:'Cómo jugar',k:'H',f:()=>openPanel('how')},
  {ic:TROPHY,l:'Récords',k:'R',f:()=>openPanel('stats')},
  {ic:SNK,l:'Serpiente',k:'K',f:()=>openPanel('skin')},
@@ -909,11 +1034,11 @@ function setScreen(s){
  screen=s;document.body.dataset.screen=s;$('scrMenu').classList.toggle('off',s!=='menu');$('scrGame').classList.toggle('off',s!=='game');
  if(s==='menu'){state='menu';show('');refreshMenu();if(DEV==='desktop')setTimeout(()=>{const b=$('bPlay');if(b)b.focus()},60)}
 }
-function goPlay(){setScreen('game');start()}
+function goPlay(){cfg.lastMode='solo';save('snakeCfg',cfg);setScreen('game');start()}
 function toMenu(){if(panelOpen)closePanel();setScreen('menu')}
 
 /* ---------- paneles ---------- */
-const TITLES={set:'Ajustes',how:'Cómo jugar',stats:'Récords',skin:'Serpiente',install:'Instalar app',versus:'2 jugadores'};
+const TITLES={set:'Ajustes',how:'Cómo jugar',stats:'Récords',skin:'Serpiente',install:'Instalar app',versus:'2 jugadores',modes:'Elige un modo'};
 const SKINS=[['neon','Neón','Tubo de luz con núcleo de energía'],['crystal','Cristal','Burbujas de vidrio de colores'],['pixel','Retro','Bloques estilo arcade'],['toy','Gusano','Juguete de vinilo']];
 function htmlSkin(){return `<canvas id="pvc" class="pv" width="360" height="130"></canvas><div class="skins">${SKINS.map(([k,n,d])=>`<button class="skbtn${cfg.skin===k?' on':''}" data-skin="${k}"><b>${n}</b><small>${d}</small></button>`).join('')}</div>`}
 const SETROWS=[
@@ -928,7 +1053,30 @@ const SETROWS=[
  {k:'touch',l:'Controles táctiles',t:'seg',o:[['swipe','Deslizar'],['dpad','Cruceta'],['tap','Tocar']],only:'mobile'},
  {k:'ui',l:'Interfaz',t:'seg',o:[['auto','Auto'],['pc','PC'],['mobile','Móvil']],d:()=>'Detectado: '+(DEV==='mobile'?'móvil':'PC')}
 ];
+const CROWN_D='M3 8l4 4 5-7 5 7 4-4-2 11H5z',PERSON_D='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',TARGET_D='M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 12h.01';
+const MODES=[
+ {id:'solo',ic:PERSON_D,n:'Solo',tag:'1 jugador',d:'La clásica: come manzanas, recoge poderes y rompe tu récord.'},
+ {id:'classic',ic:USERS,n:'Duelo clásico',tag:'2 jugadores',d:'Gana el último que siga vivo. Cuidado con el cuerpo del rival.'},
+ {id:'hill',ic:CROWN_D,n:'Rey de la colina',tag:'2 jugadores',d:'Domina la zona que cambia de lugar: 10 puntos por segundo dentro.'},
+ {id:'hunt',ic:TARGET_D,n:'Cazador y presa',tag:'2 jugadores',d:'Uno persigue y el otro huye. Si te tocan, cambian los roles.'}
+];
+function htmlModes(){
+ return `<div class="modes">${MODES.map((m,i)=>`<button class="mode${cfg.lastMode===m.id?' cur':''}" data-mode="${m.id}"><kbd>${i+1}</kbd>${svg(m.ic,30)}<span class="tag">${m.tag}</span><b>${m.n}</b><small>${m.d}</small></button>`).join('')}</div><p>Los modos de 2 jugadores se juegan en el mismo teclado: J1 con WASD y J2 con las flechas.</p>`;
+}
+function openModes(){openPanel('modes');const c=$('pbody').querySelector('.mode.cur')||$('pbody').querySelector('.mode');if(c&&c.focus&&DEV==='desktop')c.focus()}
+function playMenu(){if(DEV==='desktop')openModes();else goPlay()}
+function pickMode(m){
+ if(m==='solo'){closePanel();goPlay();return}
+ cfg.mpMode=m;save('snakeCfg',cfg);panelOpen='versus';renderPanel();
+ const g=$('pbody').querySelector('#vGo');if(g&&g.focus&&DEV==='desktop')g.focus();
+}
+const MPDESC={
+ classic:'Gana la ronda el último que siga vivo. Cuidado con el cuerpo del rival y con chocar de frente.',
+ hill:'Mantén la cabeza dentro de la colina para sumar 10 puntos por segundo. Si los dos están dentro, nadie suma. La zona cambia de lugar cada 15 s. Gana quien llegue a 250 puntos o tenga más a los 2:00. Si chocas, reapareces a los 2,5 s.',
+ hunt:'Uno es cazador (más rápido) y el otro presa. La presa suma puntos por sobrevivir. Si el cazador la toca, ganan 50 puntos y se cambian los roles. Las serpientes se atraviesan. Dura 90 s y si chocas con pared o contigo reapareces.'
+};
 const MPROWS=[
+ {k:'mpMode',l:'Modo',o:[['classic','Clásico'],['hill','Rey de la colina'],['hunt','Cazador y presa']]},
  {k:'mpMap',l:'Mapa',o:[['big','Grande 32×20'],['huge','Enorme 44×28']]},
  {k:'mpRounds',l:'Partida',o:[['1','1 ronda'],['3','Mejor de 3'],['5','Mejor de 5']]},
  {k:'mpSk0',l:'Serpiente J1',o:SKINS.map(([k,n])=>[k,n])},
@@ -937,7 +1085,7 @@ const MPROWS=[
 ];
 function htmlVersus(){
  const rows=MPROWS.map(r=>`<div class="row"><div><b>${r.l}</b></div><div class="seg" role="group" aria-label="${r.l}">${r.o.map(([v,l])=>`<button class="${String(cfg[r.k])===v?'on':''}" data-k="${r.k}" data-v="${v}">${l}</button>`).join('')}</div></div>`).join('');
- return `<div class="vs"><div class="vp" style="--c:#4fd1a5"><b>Jugador 1</b><div class="kk"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div></div><div class="vp" style="--c:#ff7a59"><b>Jugador 2</b><div class="kk"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></div></div></div>${rows}<p>Gana la ronda el último que siga vivo. Cuidado con el cuerpo del rival y con chocar de frente. Los dos comen manzanas del mismo mapa.</p><div class="acts"><button class="btn" id="vGo">${svg(PLAY)} Empezar</button></div>`;
+ return `<div class="vs"><div class="vp" style="--c:#4fd1a5"><b>Jugador 1</b><div class="kk"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div></div><div class="vp" style="--c:#ff7a59"><b>Jugador 2</b><div class="kk"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></div></div></div>${rows}<p>${MPDESC[cfg.mpMode||'classic']}</p><div class="acts"><button class="btn ghost" id="vBack">Modos</button><button class="btn" id="vGo">${svg(PLAY)} Empezar</button></div>`;
 }
 function htmlSettings(){
  const rows=SETROWS.filter(r=>!r.only||r.only===DEV).map(r=>{
@@ -964,7 +1112,7 @@ function htmlStats(){
 }
 function renderPanel(){
  $('ptitle').textContent=TITLES[panelOpen];
- $('pbody').innerHTML=panelOpen==='set'?htmlSettings():panelOpen==='how'?htmlHow():panelOpen==='skin'?htmlSkin():panelOpen==='install'?htmlInstall():panelOpen==='versus'?htmlVersus():htmlStats();
+ $('pbody').innerHTML=panelOpen==='set'?htmlSettings():panelOpen==='how'?htmlHow():panelOpen==='skin'?htmlSkin():panelOpen==='install'?htmlInstall():panelOpen==='versus'?htmlVersus():panelOpen==='modes'?htmlModes():htmlStats();
 }
 function openPanel(k){lastFocus=document.activeElement;panelOpen=k;$('panel').classList.remove('off');renderPanel();$('pclose').focus()}
 function closePanel(){
@@ -980,11 +1128,14 @@ function changed(k,v){
  if(panelOpen==='set'||panelOpen==='versus'){renderPanel();const e=$('pbody').querySelector(`[data-k="${k}"]`+(v!==undefined?`[data-v="${v}"]`:''));if(e&&e.focus&&DEV==='desktop')e.focus()}
 }
 $('pbody').addEventListener('click',e=>{
+ const md=e.target.closest('.mode');
+ if(md){beep(520,.05,'triangle',.04);pickMode(md.dataset.mode);return}
  const sk=e.target.closest('.skbtn');
  if(sk){cfg.skin=sk.dataset.skin;save('snakeCfg',cfg);beep(520,.05,'triangle',.04);renderPanel();const nb=$('pbody').querySelector('.skbtn.on');if(nb&&DEV==='desktop')nb.focus();return}
  const b=e.target.closest('button');if(!b)return;
  if(b.id==='sSkin'){openPanel('skin');return}
  if(b.id==='vGo'){closePanel();goVersus();return}
+ if(b.id==='vBack'){panelOpen='modes';renderPanel();const c=$('pbody').querySelector('.mode.cur');if(c&&c.focus&&DEV==='desktop')c.focus();return}
  if(b.id==='iGo'){doInstall();return}
  if(b.id==='iNo'){declineInstall();return}
  if(b.classList.contains('tog')){const k=b.dataset.k;cfg[k]=!cfg[k];beep(520,.05,'triangle',.04);changed(k)}
@@ -1007,15 +1158,16 @@ addEventListener('keydown',e=>{
   else if(screen==='game'){if(state==='play'||state==='pause')togglePause();else if(state==='over'||state==='count')toMenu()}
   return;
  }
+ if(panelOpen==='modes'&&/^[1-4]$/.test(k)){pickMode(MODES[+k-1].id);return}
  if(panelOpen)return;
  if(screen==='menu'){
   if(k==='ArrowDown'||k==='ArrowUp'){e.preventDefault();const bs=[...$('mnav').children],i=Math.max(0,bs.indexOf(ae));bs[(i+(k==='ArrowDown'?1:bs.length-1))%bs.length].focus()}
-  else if(k==='Enter'&&!onCtl)goPlay();
+  else if(k==='Enter'&&!onCtl)playMenu();
   else if(k==='h'||k==='H')openPanel('how');
   else if(k==='r'||k==='R')openPanel('stats');
   else if(k==='k'||k==='K')openPanel('skin');
   else if((k==='i'||k==='I')&&canInstall())openPanel('install');
-  else if(k==='2'&&DEV==='desktop')openPanel('versus');
+  else if(k==='2'&&DEV==='desktop')openModes();
   else if(k==='s'||k==='S')openPanel('set');
   else if(k==='f'||k==='F')toggleFS();
   return;
@@ -1060,7 +1212,7 @@ $('bSound').onclick=()=>{$('bSound').blur();toggleSound()};
 $('bPause').onclick=()=>{$('bPause').blur();if(state==='play'||state==='pause')togglePause()};
 $('pResume').onclick=togglePause;
 $('pSet').onclick=()=>openPanel('set');
-$('pMenu').onclick=toMenu;$('again').onclick=onAgain;$('oMenu').onclick=toMenu;
+$('pMenu').onclick=toMenu;$('pMode').onclick=()=>{toMenu();openModes()};$('oMode').onclick=()=>{toMenu();openModes()};$('again').onclick=onAgain;$('oMenu').onclick=toMenu;
 $('pclose').onclick=closePanel;
 $('panel').addEventListener('click',e=>{if(e.target===$('panel'))closePanel()});
 $('legend').innerHTML=Object.values(POW).map(p=>`<div class="leg" style="--c:${p.color}">${svg(p.ic)}${p.name}</div>`).join('');
